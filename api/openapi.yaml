@@ -1,0 +1,498 @@
+openapi: 3.1.0
+info:
+  title: Indian Rail Live Intelligence Platform API
+  description: >
+    Real-time and historical analytics API for Indian Railways trains.
+    All times are ISO 8601 UTC. See /docs for the "Time Machine" replay guide.
+  version: "1.0.0"
+  contact:
+    name: RailPulse Developer Platform
+servers:
+  - url: https://api.railpulse.in/api/v1
+    description: Production
+  - url: https://staging-api.railpulse.in/api/v1
+    description: Staging
+
+tags:
+  - name: Search
+  - name: Live Tracking
+  - name: Historical
+  - name: Analytics
+  - name: Predictions
+  - name: Account
+  - name: Developer
+
+paths:
+  /trains/search:
+    get:
+      tags: [Search]
+      summary: Fuzzy search for trains by number or name (EN/Hindi)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, example: "rajdhani" }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        "200":
+          description: Matching trains
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrainSummary" }
+
+  /trains/{trainNumber}:
+    get:
+      tags: [Search]
+      summary: Get train metadata
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Train details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Train" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /trains/{trainNumber}/route:
+    get:
+      tags: [Search]
+      summary: Get full static schedule (route stations)
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Ordered list of route stations with scheduled timings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RouteStation" }
+
+  /trains/{trainNumber}/live:
+    get:
+      tags: [Live Tracking]
+      summary: Get current live status, position, ETA
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Live status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LiveStatus" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /trains/{trainNumber}/live/schedule:
+    get:
+      tags: [Live Tracking]
+      summary: Today's run — scheduled vs actual table
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Station-by-station schedule vs actual
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StationEvent" }
+
+  /trains/{trainNumber}/gps-report:
+    post:
+      tags: [Live Tracking]
+      summary: Submit a crowd-sourced GPS ping (opt-in, authenticated app users)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GpsReport" }
+      responses:
+        "202": { description: Accepted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /trains/{trainNumber}/runs:
+    get:
+      tags: [Historical]
+      summary: List historical run dates with summary stats (for the Time Machine date picker)
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RunSummary" }
+
+  /trains/{trainNumber}/runs/{date}/replay:
+    get:
+      tags: [Historical]
+      summary: Get combined replay payload (route + positions + station events) for the Time Machine player
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+        - name: resolution_seconds
+          in: query
+          description: Downsampling resolution for position track
+          schema: { type: integer, default: 60 }
+      responses:
+        "200":
+          description: Replay payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReplayPayload" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /trains/{trainNumber}/analytics:
+    get:
+      tags: [Analytics]
+      summary: Delay analytics for a window
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+        - name: window
+          in: query
+          schema: { type: string, enum: [7d, 30d, 90d, 1y], default: 30d }
+      responses:
+        "200":
+          description: Analytics summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSummary" }
+
+  /trains/{trainNumber}/reliability:
+    get:
+      tags: [Analytics]
+      summary: Reliability score (0-100) with explainable breakdown
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Reliability score
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReliabilityScore" }
+
+  /trains/{trainNumber}/insights:
+    get:
+      tags: [Analytics]
+      summary: Latest AI-generated natural-language insights
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Insight list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Insight" }
+
+  /trains/{trainNumber}/predictions:
+    get:
+      tags: [Predictions]
+      summary: Predicted ETA for next station and destination
+      parameters:
+        - $ref: "#/components/parameters/TrainNumber"
+      responses:
+        "200":
+          description: Predictions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PredictionSet" }
+
+  /developers/api-keys:
+    post:
+      tags: [Developer]
+      summary: Issue a new API key (free tier instant)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiKey" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    TrainNumber:
+      name: trainNumber
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9]{4,5}$", example: "12951" }
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+
+    DataFreshness:
+      type: object
+      properties:
+        last_updated: { type: string, format: date-time }
+        source: { type: string, enum: [crowd_gps, ntes_scrape, official_feed, interpolated] }
+        staleness_seconds: { type: integer }
+
+    TrainSummary:
+      type: object
+      properties:
+        train_number: { type: string, example: "12951" }
+        name: { type: string, example: "Mumbai Rajdhani" }
+        name_local: { type: string, example: "मुंबई राजधानी" }
+        source_station: { type: string, example: "NDLS" }
+        destination_station: { type: string, example: "BCT" }
+        train_type: { type: string, example: "rajdhani" }
+
+    Train:
+      allOf:
+        - $ref: "#/components/schemas/TrainSummary"
+        - type: object
+          properties:
+            zone: { type: string, example: "WR" }
+            total_distance_km: { type: number, example: 1384 }
+            average_speed_kmph: { type: number, example: 86.5 }
+            runs_on_days: { type: string, example: "1111111" }
+
+    RouteStation:
+      type: object
+      properties:
+        sequence_number: { type: integer }
+        station_code: { type: string }
+        station_name: { type: string }
+        distance_from_source_km: { type: number }
+        scheduled_arrival_offset_minutes: { type: integer, nullable: true }
+        scheduled_departure_offset_minutes: { type: integer, nullable: true }
+        halt_minutes: { type: integer }
+        platform_number: { type: string, nullable: true }
+
+    LiveStatus:
+      type: object
+      properties:
+        train_number: { type: string }
+        name: { type: string }
+        run_date: { type: string, format: date }
+        status: { type: string, enum: [scheduled, running, completed, cancelled, terminated_early] }
+        current_station:
+          type: object
+          properties:
+            code: { type: string }
+            name: { type: string }
+        next_station:
+          type: object
+          properties:
+            code: { type: string }
+            name: { type: string }
+            scheduled_arrival: { type: string, format: date-time }
+            predicted_arrival: { type: string, format: date-time }
+        position:
+          type: object
+          properties:
+            lat: { type: number }
+            lon: { type: number }
+            speed_kmph: { type: number }
+            heading_degrees: { type: number }
+            distance_covered_km: { type: number }
+            distance_remaining_km: { type: number }
+        delay:
+          type: object
+          properties:
+            current_minutes: { type: integer }
+            max_today_minutes: { type: integer }
+            average_minutes: { type: number }
+            trend: { type: string, enum: [recovering, worsening, stable] }
+        data_freshness: { $ref: "#/components/schemas/DataFreshness" }
+
+    StationEvent:
+      type: object
+      properties:
+        sequence_number: { type: integer }
+        station_code: { type: string }
+        station_name: { type: string }
+        scheduled_arrival: { type: string, format: date-time, nullable: true }
+        actual_arrival: { type: string, format: date-time, nullable: true }
+        scheduled_departure: { type: string, format: date-time, nullable: true }
+        actual_departure: { type: string, format: date-time, nullable: true }
+        arrival_delay_minutes: { type: integer, nullable: true }
+        departure_delay_minutes: { type: integer, nullable: true }
+        status: { type: string, enum: [early, on_time, delayed, pending] }
+
+    GpsReport:
+      type: object
+      required: [lat, lon, recorded_at]
+      properties:
+        lat: { type: number }
+        lon: { type: number }
+        accuracy_m: { type: number }
+        speed_kmph: { type: number }
+        recorded_at: { type: string, format: date-time }
+        consent_token: { type: string, description: "Per-trip opt-in consent token" }
+
+    RunSummary:
+      type: object
+      properties:
+        run_date: { type: string, format: date }
+        status: { type: string }
+        final_delay_minutes: { type: integer, nullable: true }
+        average_speed_kmph: { type: number, nullable: true }
+        data_quality: { type: string, enum: [high, medium, low, interpolated] }
+
+    ReplayPayload:
+      type: object
+      properties:
+        train_number: { type: string }
+        run_date: { type: string, format: date }
+        route_geometry:
+          type: object
+          description: GeoJSON LineString of the route
+        positions:
+          type: array
+          items:
+            type: object
+            properties:
+              t: { type: string, format: date-time }
+              lat: { type: number }
+              lon: { type: number }
+              speed_kmph: { type: number }
+              distance_covered_km: { type: number }
+        station_events:
+          type: array
+          items: { $ref: "#/components/schemas/StationEvent" }
+        summary:
+          type: object
+          properties:
+            total_duration_minutes: { type: integer }
+            average_speed_kmph: { type: number }
+            final_delay_minutes: { type: integer }
+            max_delay_minutes: { type: integer }
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        train_number: { type: string }
+        window: { type: string }
+        average_delay_minutes: { type: number }
+        max_delay_minutes: { type: number }
+        most_delayed_stations:
+          type: array
+          items:
+            type: object
+            properties:
+              station_code: { type: string }
+              station_name: { type: string }
+              average_delay_minutes: { type: number }
+        recovery_stations:
+          type: array
+          items:
+            type: object
+            properties:
+              station_code: { type: string }
+              average_recovery_minutes: { type: number }
+        day_of_week_performance:
+          type: array
+          items:
+            type: object
+            properties:
+              day: { type: string }
+              average_delay_minutes: { type: number }
+
+    ReliabilityScore:
+      type: object
+      properties:
+        train_number: { type: string }
+        score: { type: number, minimum: 0, maximum: 100 }
+        computed_at: { type: string, format: date-time }
+        components:
+          type: object
+          properties:
+            punctuality: { type: number }
+            consistency: { type: number }
+            cancellations: { type: number }
+            severe_delays: { type: number }
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              score: { type: number }
+
+    Insight:
+      type: object
+      properties:
+        run_date: { type: string, format: date }
+        text: { type: string, example: "Train 12002 has recovered 18 minutes during the last 4 stations and is expected to reach New Delhi only 7 minutes late." }
+        text_local: { type: string }
+        generated_at: { type: string, format: date-time }
+
+    PredictionSet:
+      type: object
+      properties:
+        train_number: { type: string }
+        next_station:
+          type: object
+          properties:
+            station_code: { type: string }
+            predicted_arrival: { type: string, format: date-time }
+            predicted_delay_minutes: { type: integer }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+        destination:
+          type: object
+          properties:
+            station_code: { type: string }
+            predicted_arrival: { type: string, format: date-time }
+            predicted_delay_minutes: { type: integer }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+        further_delay_probability: { type: number, minimum: 0, maximum: 1 }
+        model_version: { type: string }
+
+    ApiKey:
+      type: object
+      properties:
+        key: { type: string }
+        tier: { type: string, enum: [free, partner, enterprise] }
+        rate_limit_per_min: { type: integer }
+        created_at: { type: string, format: date-time }

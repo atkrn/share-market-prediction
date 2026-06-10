@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RailPulse — Indian Rail Live Intelligence (UI Prototype)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #131c30;
+    --panel-2: #1a2640;
+    --border: #243352;
+    --text: #e6edf7;
+    --text-dim: #94a3b8;
+    --brand: #38bdf8;
+    --early: #22c55e;
+    --ontime: #eab308;
+    --delayed: #ef4444;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header .brand { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  header .search {
+    flex: 1; max-width: 480px; display: flex; gap: 8px;
+  }
+  header .search input {
+    flex: 1; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 14px; border-radius: 999px; font-size: 14px;
+  }
+  header .search button {
+    background: var(--brand); border: none; color: #03222f; font-weight: 700;
+    padding: 9px 18px; border-radius: 999px; cursor: pointer;
+  }
+  header .right { display:flex; align-items:center; gap: 14px; font-size: 13px; color: var(--text-dim);}
+  header .lang { border:1px solid var(--border); border-radius:999px; padding:4px 10px; cursor:pointer;}
+
+  .train-header {
+    padding: 14px 20px 0 20px;
+  }
+  .train-header h1 { margin: 0; font-size: 20px; }
+  .train-header .sub { color: var(--text-dim); font-size: 13px; margin-top: 2px;}
+
+  .status-bar {
+    margin: 12px 20px 0 20px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex; gap: 24px; flex-wrap: wrap; align-items:center; font-size: 14px;
+  }
+  .badge {
+    display: inline-flex; align-items:center; gap:6px; font-weight: 700; padding: 4px 10px; border-radius: 999px; font-size: 13px;
+  }
+  .badge.delayed { background: rgba(239,68,68,0.15); color: var(--delayed); }
+  .badge.ontime { background: rgba(234,179,8,0.15); color: var(--ontime); }
+  .badge.early { background: rgba(34,197,94,0.15); color: var(--early); }
+  .dim { color: var(--text-dim); }
+
+  nav.tabs {
+    display: flex; gap: 4px; margin: 14px 20px 0 20px; border-bottom: 1px solid var(--border);
+  }
+  nav.tabs button {
+    background: none; border: none; color: var(--text-dim); padding: 10px 16px;
+    cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent;
+  }
+  nav.tabs button.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600;}
+
+  main { padding: 16px 20px 40px 20px; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  .grid-2 {
+    display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px;
+  }
+  @media (max-width: 920px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px;
+  }
+  .card h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em;}
+
+  #live-map, #replay-map { height: 440px; border-radius: var(--radius); overflow: hidden; }
+
+  table.sched { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.sched th, table.sched td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  table.sched th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase;}
+  table.sched tr.current td { background: rgba(56,189,248,0.08); }
+
+  .delay-pill { display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:12.5px; padding: 2px 8px; border-radius:999px; }
+  .delay-pill.early { background: rgba(34,197,94,0.15); color: var(--early); }
+  .delay-pill.ontime { background: rgba(234,179,8,0.15); color: var(--ontime); }
+  .delay-pill.delayed { background: rgba(239,68,68,0.15); color: var(--delayed); }
+  .delay-pill.pending { background: rgba(148,163,184,0.12); color: var(--text-dim); }
+
+  .kpi-row { display:grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px;}
+  @media (max-width: 760px){ .kpi-row { grid-template-columns: repeat(2,1fr);} }
+  .kpi { background: var(--panel); border:1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align:center;}
+  .kpi .val { font-size: 24px; font-weight: 700; }
+  .kpi .label { color: var(--text-dim); font-size: 12px; margin-top: 4px;}
+
+  .insight {
+    margin-top: 12px; background: linear-gradient(135deg, rgba(56,189,248,0.12), rgba(56,189,248,0.03));
+    border: 1px solid rgba(56,189,248,0.3); border-radius: var(--radius); padding: 12px 14px; font-size: 13.5px;
+  }
+  .insight .icon { font-size: 16px; margin-right: 6px; }
+
+  /* Time machine */
+  .tm-controls { margin-top: 12px; display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
+  .tm-controls select {
+    background: var(--panel-2); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size: 13px;
+  }
+  .tm-playbar { margin-top: 10px; display:flex; align-items:center; gap:12px; }
+  .tm-playbar button.play {
+    background: var(--brand); border:none; color:#03222f; font-weight:700; padding:8px 16px; border-radius:8px; cursor:pointer; min-width:80px;
+  }
+  .tm-playbar input[type=range] { flex:1; }
+  .speed-buttons button {
+    background: var(--panel-2); border:1px solid var(--border); color:var(--text-dim); padding: 6px 10px; border-radius:6px; cursor:pointer; font-size: 12px;
+  }
+  .speed-buttons button.active { color: var(--brand); border-color: var(--brand); }
+
+  .station-timeline {
+    display:flex; align-items:center; margin: 16px 0 4px 0; overflow-x:auto; padding-bottom: 8px;
+  }
+  .station-timeline .stop { display:flex; flex-direction:column; align-items:center; min-width: 64px; position:relative;}
+  .station-timeline .stop .dot {
+    width: 14px; height:14px; border-radius:50%; border:2px solid var(--text-dim); background: var(--panel); margin-bottom: 6px; z-index:2;
+  }
+  .station-timeline .stop.passed .dot { background: var(--brand); border-color: var(--brand); }
+  .station-timeline .stop.current .dot { background: var(--ontime); border-color: var(--ontime); width:18px; height:18px; }
+  .station-timeline .stop .code { font-size: 11px; color: var(--text-dim); }
+  .station-timeline .stop.passed .code, .station-timeline .stop.current .code { color: var(--text); font-weight:600;}
+  .station-timeline .line {
+    position:absolute; top:6px; left:-50%; width:100%; height:2px; background: var(--border); z-index:1;
+  }
+  .station-timeline .stop.passed .line, .station-timeline .stop.current .line { background: var(--brand); }
+  .station-timeline .stop:first-child .line { display:none; }
+
+  .readout { margin-top: 12px; font-size: 13.5px; line-height:1.7;}
+  .readout b { color: var(--text); }
+
+  .reliability-gauge {
+    width: 130px; height: 130px; border-radius: 50%; margin: 0 auto 10px auto;
+    display:flex; align-items:center; justify-content:center; position:relative;
+    background: conic-gradient(var(--early) 0% var(--pct,84%), var(--border) var(--pct,84%) 100%);
+  }
+  .reliability-gauge::before {
+    content:""; position:absolute; inset:10px; background:var(--panel); border-radius:50%;
+  }
+  .reliability-gauge .score { position:relative; font-size: 28px; font-weight:800; }
+  .reliability-gauge .score small { font-size: 13px; color: var(--text-dim); font-weight:500; }
+
+  .bar-row { display:flex; align-items:center; gap:8px; margin: 6px 0; font-size: 12.5px; }
+  .bar-row .name { width: 110px; color: var(--text-dim); }
+  .bar-row .bar { flex:1; height: 8px; background: var(--panel-2); border-radius:4px; overflow:hidden; }
+  .bar-row .bar > span { display:block; height:100%; background: var(--delayed); }
+  .bar-row .val { width: 36px; text-align:right; }
+
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--text-dim); margin-top:8px; flex-wrap:wrap;}
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend .dot { width:10px; height:10px; border-radius:50%; }
+
+  footer { padding: 16px 20px 30px 20px; color: var(--text-dim); font-size: 12px; border-top:1px solid var(--border); }
+
+  .train-marker .train-arrow {
+    font-size: 22px; color: var(--brand); text-shadow: 0 0 6px rgba(56,189,248,0.9);
+    display:flex; align-items:center; justify-content:center; transform-origin: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">🚆 RailPulse</div>
+  <div class="search">
+    <input type="text" id="searchInput" value="12951 — Mumbai Rajdhani" />
+    <button onclick="alert('Prototype demo — fixed to train 12951 (Mumbai Rajdhani). In production this searches all trains.')">Track ▶</button>
+  </div>
+  <div class="right">
+    <span class="lang">EN | हिं</span>
+    <span>👤 Login</span>
+  </div>
+</header>
+
+<div class="train-header">
+  <h1>12951 · Mumbai Rajdhani</h1>
+  <div class="sub">New Delhi (NDLS) → Mumbai Central (BCT) · 1,384 km · Daily</div>
+</div>
+
+<div class="status-bar" id="statusBar"></div>
+
+<nav class="tabs">
+  <button class="active" data-tab="live">Live</button>
+  <button data-tab="schedule">Schedule</button>
+  <button data-tab="timemachine">History / Time Machine</button>
+  <button data-tab="performance">Performance</button>
+</nav>
+
+<main>
+  <!-- LIVE TAB -->
+  <section class="panel active" id="panel-live">
+    <div class="grid-2">
+      <div class="card">
+        <h3>Live Map</h3>
+        <div id="live-map"></div>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--brand)"></span> Train position</span>
+          <span><span class="dot" style="background:#94a3b8"></span> Passed station</span>
+          <span><span class="dot" style="background:transparent;border:2px solid #94a3b8"></span> Upcoming station</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Route &amp; Live Schedule</h3>
+        <table class="sched" id="liveScheduleTable"></table>
+        <div class="insight" id="aiInsight"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE TAB -->
+  <section class="panel" id="panel-schedule">
+    <div class="kpi-row" id="scheduleKpis"></div>
+    <div class="card">
+      <h3>Schedule vs Actual — Today</h3>
+      <table class="sched" id="fullScheduleTable"></table>
+    </div>
+  </section>
+
+  <!-- TIME MACHINE TAB -->
+  <section class="panel" id="panel-timemachine">
+    <div class="grid-2">
+      <div class="card">
+        <h3>Replay Map</h3>
+        <div id="replay-map"></div>
+        <div class="tm-controls">
+          <label class="dim">📅 Date:</label>
+          <select id="dateSelect"></select>
+        </div>
+        <div class="tm-playbar">
+          <button class="play" id="playBtn">▶ Play</button>
+          <input type="range" id="scrub" min="0" max="1000" value="0" />
+          <div class="speed-buttons" id="speedButtons">
+            <button data-speed="1" class="active">1x</button>
+            <button data-speed="2">2x</button>
+            <button data-speed="4">4x</button>
+            <button data-speed="8">8x</button>
+          </div>
+        </div>
+        <div class="station-timeline" id="stationTimeline"></div>
+      </div>
+      <div class="card">
+        <h3>Journey Summary</h3>
+        <div id="journeySummary"></div>
+        <h3 style="margin-top:18px;">At Playhead</h3>
+        <div class="readout" id="playheadReadout"></div>
+        <button style="margin-top:12px;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;"
+          onclick="alert('Prototype demo — in production this renders a shareable GIF/clip of the replay (see §16.5 of the design docs).')">📷 Export Clip</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERFORMANCE TAB -->
+  <section class="panel" id="panel-performance">
+    <div class="kpi-row" id="perfKpis"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Delay Trend (Last 30 Days)</h3>
+        <canvas id="delayTrendChart" height="180"></canvas>
+      </div>
+      <div class="card">
+        <h3>Reliability Breakdown</h3>
+        <div class="reliability-gauge" id="reliabilityGauge">
+          <div class="score" id="reliabilityScoreText"></div>
+        </div>
+        <div id="reliabilityBars"></div>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:16px;">
+      <div class="card">
+        <h3>Most Delayed / Recovery Stations</h3>
+        <div id="stationStats"></div>
+      </div>
+      <div class="card">
+        <h3>Day-of-Week Performance (avg delay, min)</h3>
+        <canvas id="dowChart" height="180"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  ⚠️ Demo prototype with mock data — illustrates the design in
+  <code>docs/rail-intelligence-platform/</code>. Not connected to live Indian Railways data.
+  Map data © OpenStreetMap contributors, © CARTO.
+</footer>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  MOCK DATA
+// ════════════════════════════════════════════════════════════════
+const STATIONS = [
+  { code:'NDLS', name:'New Delhi',      lat:28.6429, lon:77.2191, dist:0,    schedArr:null, schedDep:0,   plat:'1' },
+  { code:'MTJ',  name:'Mathura Jn',     lat:27.4924, lon:77.6737, dist:141,  schedArr:130,  schedDep:132, plat:'3' },
+  { code:'KOTA', name:'Kota Jn',        lat:25.1804, lon:75.8648, dist:463,  schedArr:278,  schedDep:283, plat:'2' },
+  { code:'BRC',  name:'Vadodara Jn',    lat:22.3072, lon:73.1812, dist:944,  schedArr:535,  schedDep:540, plat:'1' },
+  { code:'ST',   name:'Surat',          lat:21.1702, lon:72.8311, dist:1027, schedArr:593,  schedDep:595, plat:'2' },
+  { code:'BVI',  name:'Borivali',       lat:19.2288, lon:72.8567, dist:1349, schedArr:787,  schedDep:789, plat:'5' },
+  { code:'BCT',  name:'Mumbai Central', lat:18.9696, lon:72.8205, dist:1384, schedArr:820,  schedDep:null,plat:'-' },
+];
+const ORIGIN_DEP_HOUR = 16, ORIGIN_DEP_MIN = 55; // 16:55 Day 1
+
+// Fixed "live / today" run
+const LIVE_RUN = {
+  status: 'running',
+  delays: { arr:[null,6,22,14,14,13,13], dep:[0,8,22,13,14,13,null] }, // minutes; ST/BVI/BCT are predicted
+  predictedFrom: 4, // index 4 (ST) onward is predicted
+  currentIndex: 3,  // BRC is the last actually-recorded station
+  position: { distKm: 960, speedKmph: 92, headingDeg: 200 },
+};
+
+// ════════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════════
+function formatTime(minutesFromStart) {
+  if (minutesFromStart == null) return '—';
+  const total = ORIGIN_DEP_HOUR*60 + ORIGIN_DEP_MIN + Math.round(minutesFromStart);
+  const dayOffset = Math.floor(total / 1440);
+  const tod = ((total % 1440) + 1440) % 1440;
+  const h = String(Math.floor(tod/60)).padStart(2,'0');
+  const m = String(tod%60).padStart(2,'0');
+  return `${h}:${m}` + (dayOffset > 0 ? ` (+${dayOffset}d)` : '');
+}
+
+// Color bands: <0 = early (green), 0-15 = on time / minor delay (yellow), >15 = delayed (red)
+function delayInfo(delay, isPending) {
+  if (isPending) return { label: 'pending', cls: 'pending' };
+  if (delay == null) return { label: '—', cls: 'pending' };
+  if (delay < 0) return { label: `${Math.abs(delay)}m early`, cls: 'early' };
+  if (delay === 0) return { label: 'On time', cls: 'ontime' };
+  if (delay <= 15) return { label: `+${delay}m`, cls: 'ontime' };
+  return { label: `+${delay}m`, cls: 'delayed' };
+}
+
+function lerp(a,b,f){ return a + (b-a)*f; }
+
+// distance(km) -> {lat, lon} interpolated along the station polyline
+function positionFromDistance(distKm) {
+  for (let i=0; i<STATIONS.length-1; i++){
+    const a = STATIONS[i], b = STATIONS[i+1];
+    if (distKm >= a.dist && distKm <= b.dist) {
+      const f = (distKm - a.dist) / (b.dist - a.dist);
+      return { lat: lerp(a.lat,b.lat,f), lon: lerp(a.lon,b.lon,f) };
+    }
+  }
+  const last = STATIONS[STATIONS.length-1];
+  return { lat: last.lat, lon: last.lon };
+}
+
+function trainIcon(heading) {
+  return L.divIcon({
+    className: 'train-marker',
+    html: `<div class="train-arrow" style="transform:rotate(${heading}deg)">▲</div>`,
+    iconSize: [24,24], iconAnchor: [12,12]
+  });
+}
+
+const ROUTE_LATLNGS = STATIONS.map(s => [s.lat, s.lon]);
+
+function addBaseMap(divId) {
+  const map = L.map(divId, { scrollWheelZoom: false }).setView([23.5, 75.0], 5);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 18
+  }).addTo(map);
+  L.polyline(ROUTE_LATLNGS, { color: '#3b82f6', weight: 3, opacity: 0.6 }).addTo(map);
+  return map;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LIVE TAB
+// ════════════════════════════════════════════════════════════════
+let secondsAgo = 38;
+function renderStatusBar() {
+  const cur = LIVE_RUN.delays.dep[LIVE_RUN.currentIndex]; // current delay = last known departure delay
+  const max = Math.max(...LIVE_RUN.delays.arr.filter(d=>d!=null), ...LIVE_RUN.delays.dep.filter(d=>d!=null));
+  const di = delayInfo(cur);
+  const icon = di.cls==='delayed' ? '🔴' : di.cls==='early' ? '🟢' : '🟡';
+  const text = cur === 0 ? 'On Time' : cur < 0 ? `${Math.abs(cur)} min Early` : `Delayed ${cur} min`;
+  document.getElementById('statusBar').innerHTML = `
+    <span class="badge ${di.cls}">${icon} ${text}</span>
+    <span class="dim">Last updated <b id="lastUpdated">${secondsAgo}s</b> ago (crowd GPS)</span>
+    <span>Speed <b>${LIVE_RUN.position.speedKmph} km/h</b> ↘ SSW</span>
+    <span class="dim">Max delay today: <b style="color:var(--delayed)">${max}m</b></span>
+  `;
+}
+setInterval(()=>{ secondsAgo++; const el=document.getElementById('lastUpdated'); if(el) el.textContent = secondsAgo+'s'; }, 1000);
+
+function renderLiveSchedule() {
+  const rows = STATIONS.map((s,i) => {
+    const isCurrent = i === LIVE_RUN.currentIndex;
+    const isPast = i < LIVE_RUN.currentIndex;
+    const isPending = i >= LIVE_RUN.predictedFrom;
+    const arrDelay = LIVE_RUN.delays.arr[i];
+    const di = delayInfo(arrDelay, isPending && i!==LIVE_RUN.currentIndex && arrDelay==null);
+    const arrTime = i===0 ? '—' : (isPending ? `ETA ${formatTime(s.schedArr + (arrDelay??0))}` : formatTime(s.schedArr + (arrDelay??0)));
+    return `<tr class="${isCurrent?'current':''}">
+      <td>${s.code} ${isCurrent?'📍':''}</td>
+      <td>${i===0?'—':formatTime(s.schedArr)}</td>
+      <td>${arrTime}</td>
+      <td><span class="delay-pill ${di.cls}">${di.label}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('liveScheduleTable').innerHTML = `
+    <tr><th>Station</th><th>Sched Arr</th><th>Actual/ETA</th><th>Status</th></tr>
+    ${rows}
+  `;
+}
+
+function renderAiInsight() {
+  document.getElementById('aiInsight').innerHTML =
+    `<span class="icon">🤖</span><b>AI Insight:</b> Train 12951 has recovered 9 minutes since Kota Jn and is expected to reach Mumbai Central only 13 minutes late. <span class="dim">(Confidence: 82%)</span>`;
+}
+
+let liveMap, liveTrainMarker;
+function initLiveMap() {
+  liveMap = addBaseMap('live-map');
+  STATIONS.forEach((s,i) => {
+    const isPast = i < LIVE_RUN.currentIndex;
+    const isCurrent = i === LIVE_RUN.currentIndex;
+    L.circleMarker([s.lat,s.lon], {
+      radius: isCurrent?7:5,
+      color: isPast||isCurrent ? '#94a3b8' : '#475569',
+      fillColor: isPast||isCurrent ? '#94a3b8' : '#0b1220',
+      fillOpacity: 1, weight: 2
+    }).addTo(liveMap).bindTooltip(`${s.code} — ${s.name}`);
+  });
+  const pos = positionFromDistance(LIVE_RUN.position.distKm);
+  liveTrainMarker = L.marker([pos.lat,pos.lon], { icon: trainIcon(LIVE_RUN.position.headingDeg) }).addTo(liveMap)
+    .bindTooltip('12951 · 92 km/h', { permanent:false });
+  liveMap.setView([pos.lat,pos.lon], 6);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SCHEDULE TAB
+// ════════════════════════════════════════════════════════════════
+function renderScheduleTab() {
+  const recordedArr = LIVE_RUN.delays.arr.filter(d=>d!=null);
+  const avg = Math.round(recordedArr.reduce((a,b)=>a+b,0)/recordedArr.length);
+  const max = Math.max(...recordedArr);
+  const cur = LIVE_RUN.delays.dep[LIVE_RUN.currentIndex];
+  const recovery = max - cur;
+  document.getElementById('scheduleKpis').innerHTML = `
+    <div class="kpi"><div class="val" style="color:var(--delayed)">${cur}m</div><div class="label">Current Delay</div></div>
+    <div class="kpi"><div class="val">${max}m</div><div class="label">Max Delay Today (Kota Jn)</div></div>
+    <div class="kpi"><div class="val">${avg}m</div><div class="label">Average Delay</div></div>
+    <div class="kpi"><div class="val" style="color:var(--early)">-${recovery}m</div><div class="label">Recovered Since Kota</div></div>
+  `;
+
+  const rows = STATIONS.map((s,i) => {
+    const isCurrent = i === LIVE_RUN.currentIndex;
+    const isPending = i >= LIVE_RUN.predictedFrom;
+    const arrDelay = LIVE_RUN.delays.arr[i], depDelay = LIVE_RUN.delays.dep[i];
+    const arrDi = delayInfo(arrDelay, isPending);
+    const arrActual = i===0 ? '—' : (isPending ? `ETA ${formatTime(s.schedArr+arrDelay)}` : formatTime(s.schedArr+arrDelay));
+    const depActual = (s.schedDep==null) ? '—' : (isPending ? `ETA ${formatTime(s.schedDep+depDelay)}` : (depDelay!=null ? formatTime(s.schedDep+depDelay) : (isCurrent?'(now)':'—')));
+    return `<tr class="${isCurrent?'current':''}">
+      <td>${s.name} <span class="dim">(${s.code})</span></td>
+      <td>${s.plat}</td>
+      <td>${i===0?'—':formatTime(s.schedArr)}</td>
+      <td>${arrActual}</td>
+      <td>${s.schedDep==null?'—':formatTime(s.schedDep)}</td>
+      <td>${depActual}</td>
+      <td><span class="delay-pill ${arrDi.cls}">${arrDi.label}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('fullScheduleTable').innerHTML = `
+    <tr><th>Station</th><th>Plat</th><th>Sched Arr</th><th>Actual Arr</th><th>Sched Dep</th><th>Actual Dep</th><th>Delay</th></tr>
+    ${rows}
+  `;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TIME MACHINE TAB
+// ════════════════════════════════════════════════════════════════
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=Math.imul(31,h)+s.charCodeAt(i)|0; } return h; }
+
+const AVAILABLE_DATES = ['2026-06-10','2026-06-09','2026-05-21','2026-03-12','2026-01-15','2025-12-25'];
+
+function generateRunData(dateStr) {
+  if (dateStr === AVAILABLE_DATES[0]) {
+    // reuse the live run, but treat predicted stations as completed for replay purposes
+    const arr = LIVE_RUN.delays.arr.map(d => d==null?0:d);
+    const dep = LIVE_RUN.delays.dep.map(d => d==null?0:d);
+    return buildRun(arr, dep, 'running');
+  }
+  const rng = mulberry32(hashStr(dateStr));
+  let delay = Math.floor(rng()*10);
+  const arr = [], dep = [];
+  STATIONS.forEach((s,i) => {
+    if (i===0) { arr.push(0); dep.push(0); return; }
+    delay += Math.floor((rng()-0.45)*16);
+    delay = Math.max(0, Math.min(45, delay));
+    arr.push(delay);
+    let dDelay = Math.max(0, delay + Math.floor((rng()-0.5)*4));
+    dep.push(s.schedDep==null ? 0 : dDelay);
+  });
+  return buildRun(arr, dep, 'completed');
+}
+
+function buildRun(arrDelays, depDelays, status) {
+  const stations = STATIONS.map((s,i) => ({
+    ...s,
+    actualArr: i===0 ? null : s.schedArr + arrDelays[i],
+    actualDep: s.schedDep==null ? null : s.schedDep + depDelays[i],
+    arrDelay: i===0 ? null : arrDelays[i],
+    depDelay: s.schedDep==null ? null : depDelays[i],
+  }));
+  const totalDuration = stations[stations.length-1].actualArr;
+  const maxDelay = Math.max(...arrDelays.filter(d=>d!=null), ...depDelays.filter(d=>d!=null));
+  const finalDelay = arrDelays[arrDelays.length-1];
+  const avgSpeed = (STATIONS[STATIONS.length-1].dist / (totalDuration/60)).toFixed(1);
+  return { stations, status, totalDuration, maxDelay, finalDelay, avgSpeed };
+}
+
+// piecewise distance(time) function from a run's actual arr/dep times
+function buildTimeDistanceCurve(run) {
+  const points = [];
+  run.stations.forEach((s,i) => {
+    if (i===0) { points.push({t:0, d:0}); points.push({t:s.actualDep, d:0}); return; }
+    points.push({t:s.actualArr, d:s.dist});
+    if (s.actualDep != null) points.push({t:s.actualDep, d:s.dist});
+  });
+  return points;
+}
+function distanceAtTime(curve, t) {
+  for (let i=0;i<curve.length-1;i++){
+    const a=curve[i], b=curve[i+1];
+    if (t >= a.t && t <= b.t) {
+      if (b.t === a.t) return a.d;
+      const f = (t-a.t)/(b.t-a.t);
+      return lerp(a.d,b.d,f);
+    }
+  }
+  return curve[curve.length-1].d;
+}
+
+let replayMap, replayMarker, currentRun, playing=false, speed=1, playheadMin=0, lastFrame=null;
+
+function initReplayMap() {
+  replayMap = addBaseMap('replay-map');
+  STATIONS.forEach(s => {
+    L.circleMarker([s.lat,s.lon], { radius:5, color:'#475569', fillColor:'#0b1220', fillOpacity:1, weight:2 })
+      .addTo(replayMap).bindTooltip(`${s.code} — ${s.name}`);
+  });
+  replayMarker = L.marker([STATIONS[0].lat, STATIONS[0].lon], { icon: trainIcon(180) }).addTo(replayMap);
+  replayMap.fitBounds(L.polyline(ROUTE_LATLNGS).getBounds(), { padding:[20,20] });
+}
+
+function loadRun(dateStr) {
+  currentRun = { date: dateStr, ...generateRunData(dateStr), curve: null };
+  currentRun.curve = buildTimeDistanceCurve(currentRun);
+  playheadMin = 0; playing = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  document.getElementById('scrub').value = 0;
+  renderJourneySummary();
+  renderStationTimeline();
+  updatePlayhead();
+}
+
+function renderJourneySummary() {
+  const r = currentRun;
+  const h = Math.floor(r.totalDuration/60), m = r.totalDuration%60;
+  document.getElementById('journeySummary').innerHTML = `
+    <div class="readout">
+      Date: <b>${r.date}</b> ${r.date===AVAILABLE_DATES[0]?'<span class="dim">(today — live, in progress)</span>':''}<br/>
+      Total duration: <b>${h}h ${m}m</b> <span class="dim">(scheduled 13h 40m)</span><br/>
+      Average speed: <b>${r.avgSpeed} km/h</b><br/>
+      Final delay: <b style="color:${r.finalDelay>5?'var(--delayed)':r.finalDelay<0?'var(--early)':'var(--ontime)'}">+${r.finalDelay}m</b><br/>
+      Max delay: <b style="color:var(--delayed)">+${r.maxDelay}m</b>
+    </div>
+  `;
+}
+
+function renderStationTimeline() {
+  document.getElementById('stationTimeline').innerHTML = STATIONS.map((s,i) => {
+    const passedTime = i===0 ? 0 : currentRun.stations[i].actualArr;
+    const cls = playheadMin > passedTime ? 'passed' : (Math.abs(playheadMin-passedTime)<1 ? 'current' : '');
+    return `<div class="stop ${cls}" data-idx="${i}"><div class="line"></div><div class="dot"></div><div class="code">${s.code}</div></div>`;
+  }).join('');
+}
+
+function updatePlayhead() {
+  const dist = distanceAtTime(currentRun.curve, playheadMin);
+  const pos = positionFromDistance(dist);
+  replayMarker.setLatLng([pos.lat, pos.lon]);
+  document.getElementById('scrub').value = Math.round((playheadMin / currentRun.totalDuration) * 1000);
+
+  // station timeline highlight
+  document.querySelectorAll('#stationTimeline .stop').forEach((el,i) => {
+    const s = currentRun.stations[i];
+    const arrTime = i===0 ? 0 : s.actualArr;
+    el.classList.remove('passed','current');
+    if (playheadMin > arrTime + 0.5) el.classList.add('passed');
+    else if (Math.abs(playheadMin - arrTime) <= 0.5 || (i===0 && playheadMin < currentRun.stations[1].actualArr)) {
+      if (playheadMin >= arrTime - 0.001) el.classList.add('current');
+    }
+  });
+
+  // readout: find last station reached
+  let lastIdx = 0;
+  for (let i=0;i<STATIONS.length;i++){
+    const arrT = i===0?0:currentRun.stations[i].actualArr;
+    if (playheadMin >= arrT) lastIdx = i; else break;
+  }
+  const s = currentRun.stations[lastIdx];
+  const delay = lastIdx===0 ? (s.depDelay??0) : s.arrDelay;
+  const di = delayInfo(delay);
+  // peak delay among stations reached so far
+  const delaysSoFar = currentRun.stations.slice(0, lastIdx+1)
+    .flatMap(st => [st.arrDelay, st.depDelay]).filter(d => d != null);
+  const maxSoFar = delaysSoFar.length ? Math.max(...delaysSoFar) : 0;
+  document.getElementById('playheadReadout').innerHTML = `
+    Time: <b>${formatTime(playheadMin)}</b><br/>
+    Position: <b>${s.name} (${s.code})</b><br/>
+    Distance covered: <b>${Math.round(dist)} km</b> / ${STATIONS[STATIONS.length-1].dist} km<br/>
+    Delay at this point: <span class="delay-pill ${di.cls}">${di.label}</span><br/>
+    ${maxSoFar - delay > 0 ? `Recovered <b style="color:var(--early)">${maxSoFar-delay}m</b> from peak delay so far` : ''}
+  `;
+}
+
+function tick(ts) {
+  if (!playing) return;
+  if (lastFrame == null) lastFrame = ts;
+  const dtSec = (ts - lastFrame)/1000;
+  lastFrame = ts;
+  // total journey plays in ~60s at 1x
+  const ratePerSec = currentRun.totalDuration / 60 * speed;
+  playheadMin += dtSec * ratePerSec;
+  if (playheadMin >= currentRun.totalDuration) {
+    playheadMin = currentRun.totalDuration;
+    playing = false;
+    document.getElementById('playBtn').textContent = '▶ Play';
+  }
+  updatePlayhead();
+  if (playing) requestAnimationFrame(tick);
+}
+
+function setupTimeMachine() {
+  AVAILABLE_DATES.forEach((d,i) => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d + (i===0 ? ' (Today — Live)' : '');
+    document.getElementById('dateSelect').appendChild(opt);
+  });
+  document.getElementById('dateSelect').addEventListener('change', e => loadRun(e.target.value));
+
+  document.getElementById('playBtn').addEventListener('click', () => {
+    playing = !playing;
+    document.getElementById('playBtn').textContent = playing ? '⏸ Pause' : '▶ Play';
+    if (playing) { lastFrame = null; requestAnimationFrame(tick); }
+  });
+
+  document.getElementById('scrub').addEventListener('input', e => {
+    playing = false;
+    document.getElementById('playBtn').textContent = '▶ Play';
+    playheadMin = (e.target.value/1000) * currentRun.totalDuration;
+    updatePlayhead();
+  });
+
+  document.querySelectorAll('#speedButtons button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#speedButtons button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      speed = Number(btn.dataset.speed);
+    });
+  });
+
+  loadRun(AVAILABLE_DATES[0]);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PERFORMANCE TAB
+// ════════════════════════════════════════════════════════════════
+function renderPerformanceTab() {
+  document.getElementById('perfKpis').innerHTML = `
+    <div class="kpi"><div class="val">84/100</div><div class="label">Reliability Score</div></div>
+    <div class="kpi"><div class="val">11.4 min</div><div class="label">Avg Delay (30d)</div></div>
+    <div class="kpi"><div class="val">87.3%</div><div class="label">Punctuality (≤15m)</div></div>
+    <div class="kpi"><div class="val">78.2 km/h</div><div class="label">Avg Speed</div></div>
+  `;
+
+  document.getElementById('reliabilityScoreText').innerHTML = `84<small>/100</small>`;
+  document.getElementById('reliabilityBars').innerHTML = `
+    <div class="bar-row"><div class="name">Punctuality</div><div class="bar"><span style="width:80%;background:var(--ontime)"></span></div><div class="val">-8</div></div>
+    <div class="bar-row"><div class="name">Consistency</div><div class="bar"><span style="width:70%;background:var(--ontime)"></span></div><div class="val">-7</div></div>
+    <div class="bar-row"><div class="name">Cancellations</div><div class="bar"><span style="width:0%;"></span></div><div class="val">0</div></div>
+    <div class="bar-row"><div class="name">Severe delays</div><div class="bar"><span style="width:10%;background:var(--ontime)"></span></div><div class="val">-1</div></div>
+    <div class="dim" style="margin-top:8px;font-size:12px;">Best month: Jan 2026 (92/100) · Worst month: Aug 2025 (68/100)</div>
+  `;
+
+  document.getElementById('stationStats').innerHTML = `
+    <b>Most Delayed Stations</b>
+    <div class="bar-row"><div class="name">Kota Jn</div><div class="bar"><span style="width:90%"></span></div><div class="val">+18m</div></div>
+    <div class="bar-row"><div class="name">Mathura Jn</div><div class="bar"><span style="width:45%"></span></div><div class="val">+9m</div></div>
+    <div class="bar-row"><div class="name">Ratlam Jn</div><div class="bar"><span style="width:35%"></span></div><div class="val">+7m</div></div>
+    <b style="display:block;margin-top:14px;">Recovery Stations</b>
+    <div class="bar-row"><div class="name">Vadodara Jn</div><div class="bar"><span style="width:60%;background:var(--early)"></span></div><div class="val">-12m</div></div>
+    <div class="bar-row"><div class="name">Borivali</div><div class="bar"><span style="width:30%;background:var(--early)"></span></div><div class="val">-6m</div></div>
+  `;
+
+  // Delay trend chart (30 days, deterministic mock)
+  const rng = mulberry32(42);
+  const trendData = Array.from({length:30}, () => Math.round(5 + rng()*35));
+  new Chart(document.getElementById('delayTrendChart'), {
+    type: 'line',
+    data: { labels: Array.from({length:30},(_,i)=>`-${30-i}d`), datasets: [{
+      data: trendData, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', fill:true, tension:0.3, pointRadius:0
+    }]},
+    options: { plugins:{legend:{display:false}}, scales:{
+      x:{ ticks:{color:'#94a3b8', maxTicksLimit:8}, grid:{color:'#243352'}},
+      y:{ ticks:{color:'#94a3b8'}, grid:{color:'#243352'}, title:{display:true,text:'Delay (min)',color:'#94a3b8'}}
+    }}
+  });
+
+  // Day of week chart
+  new Chart(document.getElementById('dowChart'), {
+    type: 'bar',
+    data: { labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], datasets:[{
+      data:[9,7,14,11,18,8,5], backgroundColor:'#38bdf8'
+    }]},
+    options: { plugins:{legend:{display:false}}, scales:{
+      x:{ ticks:{color:'#94a3b8'}, grid:{display:false}},
+      y:{ ticks:{color:'#94a3b8'}, grid:{color:'#243352'}}
+    }}
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TAB SWITCHING + INIT
+// ════════════════════════════════════════════════════════════════
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab==='live' && liveMap) liveMap.invalidateSize();
+    if (btn.dataset.tab==='timemachine' && replayMap) replayMap.invalidateSize();
+  });
+});
+
+renderStatusBar();
+renderLiveSchedule();
+renderAiInsight();
+initLiveMap();
+renderScheduleTab();
+initReplayMap();
+setupTimeMachine();
+renderPerformanceTab();
+</script>
+</body>
+</html>
