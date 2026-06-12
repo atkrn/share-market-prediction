@@ -35,6 +35,11 @@ trainsRouter.get("/:trainNumber", (req, res) => {
     total_distance_km: train.total_distance_km,
     average_speed_kmph: train.average_speed_kmph,
     runs_on_days: train.runs_on_days,
+    // Additional fields beyond the documented OpenAPI schema, used by the
+    // web app to format wall-clock times from minutes-from-origin offsets.
+    origin_departure_hour: train.origin_departure_hour,
+    origin_departure_minute: train.origin_departure_minute,
+    scheduled_duration_min: train.scheduled_duration_min,
   });
 });
 
@@ -48,6 +53,10 @@ trainsRouter.get("/:trainNumber/route", (req, res) => {
     sequence_number: s.sequence_number,
     station_code: s.station_code,
     station_name: s.station_name,
+    // Additional fields beyond the documented OpenAPI schema, used by the
+    // web app to render the route on the map.
+    lat: s.lat,
+    lon: s.lon,
     distance_from_source_km: s.distance_from_source_km,
     scheduled_arrival_offset_minutes: s.scheduled_arrival_offset_min,
     scheduled_departure_offset_minutes: s.scheduled_departure_offset_min,

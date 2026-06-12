@@ -2,15 +2,32 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { searchTrains } from "@/lib/data/trains";
+import { useEffect, useState } from "react";
+import { searchTrains } from "@/lib/api";
+import type { TrainSummary } from "@/lib/types";
 
 export default function Header() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  const [results, setResults] = useState<TrainSummary[]>([]);
 
-  const results = useMemo(() => (query.trim() ? searchTrains(query, 6) : []), [query]);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchTrains(trimmed, 6).then((r) => {
+        if (!cancelled) setResults(r);
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  const visibleResults = query.trim() ? results : [];
 
   function go(trainNumber: string) {
     setQuery("");
@@ -20,8 +37,8 @@ export default function Header() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (results.length > 0) {
-      go(results[0].trainNumber);
+    if (visibleResults.length > 0) {
+      go(visibleResults[0].trainNumber);
     } else if (/^\d{4,5}$/.test(query.trim())) {
       go(query.trim());
     }
@@ -48,9 +65,9 @@ export default function Header() {
         >
           Track ▶
         </button>
-        {focused && results.length > 0 && (
+        {focused && visibleResults.length > 0 && (
           <ul className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-border bg-panel-2 shadow-lg">
-            {results.map((t) => (
+            {visibleResults.map((t) => (
               <li key={t.trainNumber}>
                 <button
                   type="button"

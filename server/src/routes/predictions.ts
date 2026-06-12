@@ -37,6 +37,10 @@ predictionsRouter.get("/:trainNumber/predictions", (req, res) => {
 
   res.json({
     train_number: train.train_number,
+    // Additional field beyond the documented OpenAPI schema: the date this
+    // prediction's run belongs to, needed by the web app to convert
+    // `predicted_arrival` timestamps back into minutes-from-origin offsets.
+    run_date: run.run_date,
     next_station: {
       station_code: next.station_code,
       predicted_arrival: offsetToISO(run.run_date, originHour, originMinute, (next.scheduled_arrival_offset_min ?? 0) + predictedNextDelay),
