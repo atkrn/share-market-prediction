@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import LiveTab from "@/components/train/LiveTab";
 import PerformanceTab from "@/components/train/PerformanceTab";
 import ScheduleTab from "@/components/train/ScheduleTab";
@@ -48,8 +49,17 @@ export default function TrainDashboard({
   analytics,
   reliability,
 }: TrainDashboardProps) {
+  const router = useRouter();
   const [active, setActive] = useState<TabId>("live");
   const [visited, setVisited] = useState<Set<TabId>>(new Set(["live"]));
+
+  // Today's live position/delay/schedule are simulated server-side from
+  // wall-clock time, so periodically re-fetching keeps the Live and
+  // Schedule tabs moving without a manual page reload.
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 15000);
+    return () => clearInterval(id);
+  }, [router]);
 
   function selectTab(tab: TabId) {
     setActive(tab);

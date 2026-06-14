@@ -3,6 +3,7 @@ import { getRoute, getStationEvents, getTodayRun, getTrain } from "../db/reposit
 import { offsetToISO } from "../lib/datetime.js";
 import { classifyDelay } from "../lib/delay.js";
 import { headingAtDistance, positionFromDistance } from "../lib/geo.js";
+import { computeLiveProgress } from "../lib/liveSimulation.js";
 import { notFound } from "../lib/problem.js";
 
 export const liveRouter = Router();
@@ -23,13 +24,14 @@ liveRouter.get("/:trainNumber/live", (req, res) => {
   if (!ctx) return notFound(res, `Live status for train ${req.params.trainNumber} not found`);
   const { train, run, route, events } = ctx;
 
-  const currentIndex = run.current_index ?? 0;
+  const progress = computeLiveProgress(route, events, train.origin_departure_hour ?? 0, train.origin_departure_minute ?? 0);
+  const currentIndex = progress.currentIndex;
   const current = route[currentIndex];
   const next = route[currentIndex + 1];
   const currentEvent = events[currentIndex];
   const nextEvent = events[currentIndex + 1];
 
-  const distanceKm = run.position_distance_km ?? 0;
+  const distanceKm = progress.positionDistanceKm;
   const pos = positionFromDistance(
     route.map((s) => ({ sequenceNumber: s.sequence_number, code: s.station_code, lat: s.lat, lon: s.lon, distanceFromSourceKm: s.distance_from_source_km })),
     distanceKm
@@ -79,7 +81,7 @@ liveRouter.get("/:trainNumber/live", (req, res) => {
     position: {
       lat: pos.lat,
       lon: pos.lon,
-      speed_kmph: run.position_speed_kmph,
+      speed_kmph: progress.positionSpeedKmph,
       heading_degrees: heading,
       distance_covered_km: distanceKm,
       distance_remaining_km: Math.max(0, (train.total_distance_km ?? 0) - distanceKm),
@@ -102,14 +104,14 @@ liveRouter.get("/:trainNumber/live", (req, res) => {
 liveRouter.get("/:trainNumber/live/schedule", (req, res) => {
   const ctx = loadLiveContext(req.params.trainNumber);
   if (!ctx) return notFound(res, `Live schedule for train ${req.params.trainNumber} not found`);
-  const { train, run, events } = ctx;
+  const { train, run, route, events } = ctx;
 
   const originHour = train.origin_departure_hour ?? 0;
   const originMinute = train.origin_departure_minute ?? 0;
-  const predictedFromIndex = run.predicted_from_index ?? events.length;
+  const progress = computeLiveProgress(route, events, originHour, originMinute);
 
   const schedule = events.map((e, i) => {
-    const isPending = i >= predictedFromIndex;
+    const isPending = i >= progress.predictedFromIndex;
     return {
       sequence_number: e.sequence_number,
       station_code: e.station_code,
@@ -125,7 +127,7 @@ liveRouter.get("/:trainNumber/live/schedule", (req, res) => {
       arrival_delay_minutes: e.arrival_delay_min,
       departure_delay_minutes: e.departure_delay_min,
       status: classifyDelay(e.arrival_delay_min, isPending && e.arrival_delay_min == null),
-      is_current: i === (run.current_index ?? -1),
+      is_current: i === progress.currentIndex,
       is_pending: isPending,
     };
   });

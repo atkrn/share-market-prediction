@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getRoute, getStationEvents, getTodayRun, getTrain } from "../db/repository.js";
 import { offsetToISO } from "../lib/datetime.js";
+import { computeLiveProgress } from "../lib/liveSimulation.js";
 import { notFound } from "../lib/problem.js";
 
 export const predictionsRouter = Router();
@@ -21,7 +22,7 @@ predictionsRouter.get("/:trainNumber/predictions", (req, res) => {
   const route = getRoute(req.params.trainNumber);
   const events = getStationEvents(run.id);
 
-  const currentIndex = run.current_index ?? 0;
+  const currentIndex = computeLiveProgress(route, events, train.origin_departure_hour ?? 0, train.origin_departure_minute ?? 0).currentIndex;
   const currentEvent = events[currentIndex];
   const currentDelay = currentEvent?.departure_delay_min ?? currentEvent?.arrival_delay_min ?? 0;
 
