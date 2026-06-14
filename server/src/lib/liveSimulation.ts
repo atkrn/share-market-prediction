@@ -9,13 +9,20 @@ export interface LiveProgress {
   positionSpeedKmph: number;
 }
 
+// Simulated minutes that pass per real-world second. At 1, a typical
+// multi-hour journey would take just as long to loop in real time, which is
+// too slow to observe in a short session — 60 makes a ~500-900 min journey
+// loop in roughly 8-15 minutes of real time.
+const SIM_SPEED_MULTIPLIER = 60;
+
 /**
  * Simulate "where is the train right now" purely as a function of
- * wall-clock time. The day's full outcome (arrival/departure delay at
- * every station) is already fixed by the seed data — this just picks
- * where on that timeline `now` falls, so `/live` keeps moving every time
- * it's polled. The journey repeats every `totalDurationMin` so the
- * simulation never goes stale.
+ * wall-clock time, sped up by `SIM_SPEED_MULTIPLIER` so movement is visible
+ * within a short session. The day's full outcome (arrival/departure delay at
+ * every station) is already fixed by the seed data — this just picks where
+ * on that timeline `now` falls, so `/live` keeps moving every time it's
+ * polled. The journey repeats every `totalDurationMin` so the simulation
+ * never goes stale.
  */
 export function computeLiveProgress(
   route: RouteStationRow[],
@@ -27,7 +34,7 @@ export function computeLiveProgress(
   const last = events[events.length - 1];
   const totalDurationMin = last.actual_arrival_offset_min ?? last.scheduled_arrival_offset_min ?? 1;
 
-  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes() + now.getUTCSeconds() / 60;
+  const nowMin = (now.getTime() / 60000) * SIM_SPEED_MULTIPLIER;
   const originMin = originHour * 60 + originMinute;
   const elapsedMin = (((nowMin - originMin) % totalDurationMin) + totalDurationMin) % totalDurationMin;
 
